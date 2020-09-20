@@ -15,13 +15,17 @@ final class StatusItemBuilder {
     private var title = ""
     private var artist = ""
     private var albumName = ""
+    private var key = 0
+    private var tempo: Float = 0.0
+    private var timeSignature = 0
+    private var mode = 0
     private var playingIcon = ""
     private var isPlaying: Bool = false
     private var hideWhenPaused = false
 
     // MARK: - Lifecycle method
 
-    init(title: String?, artist: String?, albumName: String?, isPlaying: Bool) {
+    init(title: String?, artist: String?, albumName: String?, isPlaying: Bool, key: Int?, tempo: Float?, timeSignature: Int?, mode: Int?) {
         if let v = title {
             self.title = v
         }
@@ -32,6 +36,10 @@ final class StatusItemBuilder {
             self.albumName = v
         }
         self.isPlaying = isPlaying
+        self.key = key ?? 0
+        self.tempo = tempo ?? 0
+        self.timeSignature = timeSignature ?? 0
+        self.mode = mode ?? 0
     }
 
     // MARK: - Methods

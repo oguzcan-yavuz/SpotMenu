@@ -25,6 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hudController: HudWindowController?
     private var preferencesController: NSWindowController?
     private var hiddenController: NSWindowController?
+    
+    private var spotifyAccessToken: String?
+    private var spotifyClientId = "42047dfe5c2349bea08a6e5916105fd8"
+    private var spotifySecretKey = "4ddb9b926ae146e58302a9bd0b2dda07"
 
     // private let popoverDelegate = PopOverDelegate()
 
@@ -68,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - AppDelegate methods
 
     func applicationDidFinishLaunching(_: Notification) {
-        Fabric.with([Crashlytics.self])
+        // Fabric.with([Crashlytics.self])
         
         UserPreferences.initializeUserPreferences()
 
@@ -162,35 +166,117 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func hotkeyActionLeft() {
         musicPlayerManager.currentPlayer?.playPrevious()
     }
+    
+    struct SpotifyAuthResponse: Codable {
+        let access_token: String
+        let token_type: String
+        let expires_in: Int
+    }
+    
+    struct AudioFeatures: Codable {
+        let key: Int
+        let mode: Int
+        let time_signature: Int
+        let tempo: Float
+    }
+    
+    func getSpotifyAccessToken(completion: @escaping () -> ()) {
+        let url = URL(string: "https://accounts.spotify.com/api/token")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        let authorization = "\(spotifyClientId):\(spotifySecretKey)".data(using: .utf8)?.base64EncodedString()
+        request.setValue("Basic \(authorization ?? "")", forHTTPHeaderField: "Authorization")
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        let bodyParams = "grant_type=client_credentials"
+        request.httpBody = bodyParams.data(using: String.Encoding.ascii, allowLossyConversion: true)
+        
+        let task = URLSession.shared.dataTask(with: request) {(data, response, error) in
+            if let data = data {
+                do {
+                    let res = try JSONDecoder().decode(SpotifyAuthResponse.self, from: data)
+                    self.spotifyAccessToken = res.access_token
+                    completion();
+                } catch let (error) {
+                    print(error)
+                }
+            }
+        }
+        
+        task.resume();
+    }
+    
+    func getAudioFeatures(id: String?, completion: @escaping (AudioFeatures) -> (), retry: Int = 1) {
+        if id == nil {
+            let defaultAudioFeatures: AudioFeatures = AudioFeatures(key: 0, mode: 0, time_signature: 0, tempo: 0.0)
+
+            completion(defaultAudioFeatures)
+        } else {
+            let trackId = id!.components(separatedBy: ":").last
+            let url = URL(string: "https://api.spotify.com/v1/audio-features/\(trackId ?? "")")!
+            var request = URLRequest(url: url)
+            if spotifyAccessToken != nil {
+                request.setValue("Bearer \(spotifyAccessToken ?? "")", forHTTPHeaderField: "Authorization")
+            }
+    
+            let task = URLSession.shared.dataTask(with: request) {(data, response, error) in
+                if let httpResponse = response as? HTTPURLResponse {
+                                if httpResponse.statusCode == 401 && retry > 0 {
+                                    print("Refreshing spotify token...")
+                                    return self.getSpotifyAccessToken() { () -> () in
+                                        return self.getAudioFeatures(id: id, completion: completion, retry: retry - 1);
+                                    };
+                                }
+                            }
+                if let data = data {
+                    do {
+                        let audioFeatures = try JSONDecoder().decode(AudioFeatures.self, from: data)
+                        print("Audio features: \(audioFeatures)")
+                        completion(audioFeatures)
+                    } catch let error {
+                        print(error)
+                    }
+                }
+            }
+            
+            task.resume()
+        }
+    }
 
     @objc func hotkeyAction() {
         let sb = NSStoryboard(name: NSStoryboard.Name(rawValue: "Hud"), bundle: nil)
         hudController = sb.instantiateInitialController() as? HudWindowController
+                        
+        getAudioFeatures(id: musicPlayerManager.currentPlayer?.currentTrack?.id) { (audioFeatures) -> () in
+            self.hudController!.setText(text: StatusItemBuilder(
+                title: self.musicPlayerManager.currentPlayer?.currentTrack?.title,
+                artist: self.musicPlayerManager.currentPlayer?.currentTrack?.artist,
+                albumName: self.musicPlayerManager.currentPlayer?.currentTrack?.album,
+                isPlaying: self.musicPlayerManager.currentPlayer?.playbackState == MusicPlaybackState.playing,
+                key: audioFeatures.key,
+                tempo: audioFeatures.tempo,
+                timeSignature: audioFeatures.time_signature,
+                mode: audioFeatures.mode)
+                .hideWhenPaused(v: false)
+                .showTitle(v: true)
+                .showAlbumName(v: true)
+                .showArtist(v: true)
+                .showPlayingIcon(v: true)
+                .getString())
 
-        hudController!.setText(text: StatusItemBuilder(
-            title: musicPlayerManager.currentPlayer?.currentTrack?.title,
-            artist: musicPlayerManager.currentPlayer?.currentTrack?.artist,
-            albumName: musicPlayerManager.currentPlayer?.currentTrack?.album,
-            isPlaying: musicPlayerManager.currentPlayer?.playbackState == MusicPlaybackState.playing)
-            .hideWhenPaused(v: false)
-            .showTitle(v: true)
-            .showAlbumName(v: true)
-            .showArtist(v: true)
-            .showPlayingIcon(v: true)
-            .getString())
+            self.hudController?.showWindow(nil)
+            self.hudController?.window?.makeKeyAndOrderFront(self)
+            NSApp.activate(ignoringOtherApps: true)
+            if let t = self.removeHudTimer {
+                t.invalidate()
+            }
+            self.removeHudTimer = Timer.scheduledTimer(
+                timeInterval: 4,
+                target: self,
+                selector: #selector(AppDelegate.removeHud),
+                userInfo: nil,
+                repeats: false)
 
-        hudController?.showWindow(nil)
-        hudController?.window?.makeKeyAndOrderFront(self)
-        NSApp.activate(ignoringOtherApps: true)
-        if let t = removeHudTimer {
-            t.invalidate()
         }
-        removeHudTimer = Timer.scheduledTimer(
-            timeInterval: 4,
-            target: self,
-            selector: #selector(AppDelegate.removeHud),
-            userInfo: nil,
-            repeats: false)
     }
 
     @objc func removeHud() {
@@ -198,20 +284,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func updateTitle() {
-
-        let statusItemTitle = StatusItemBuilder(
-            title: musicPlayerManager.currentPlayer?.currentTrack?.title,
-            artist: musicPlayerManager.currentPlayer?.currentTrack?.artist,
-            albumName: musicPlayerManager.currentPlayer?.currentTrack?.album,
-            isPlaying: musicPlayerManager.currentPlayer?.playbackState == MusicPlaybackState.playing)
-            .hideWhenPaused(v: UserPreferences.hideTitleArtistWhenPaused)
-            .showTitle(v: UserPreferences.showTitle)
-            .showAlbumName(v: UserPreferences.showAlbumName)
-            .showArtist(v: UserPreferences.showArtist)
-            .showPlayingIcon(v: UserPreferences.showPlayingIcon)
-            .getString()
-        if lastStatusTitle != statusItemTitle {
-            updateTitle(newTitle: statusItemTitle)
+        getAudioFeatures(id: musicPlayerManager.currentPlayer?.currentTrack?.id) { (audioFeatures) -> () in
+            let statusItemTitle = StatusItemBuilder(
+                title: self.musicPlayerManager.currentPlayer?.currentTrack?.title,
+                artist: self.musicPlayerManager.currentPlayer?.currentTrack?.artist,
+                albumName: self.musicPlayerManager.currentPlayer?.currentTrack?.album,
+                isPlaying: self.musicPlayerManager.currentPlayer?.playbackState == MusicPlaybackState.playing,
+                key: audioFeatures.key,
+                tempo: audioFeatures.tempo,
+                timeSignature: audioFeatures.time_signature,
+                mode: audioFeatures.mode)
+                .hideWhenPaused(v: UserPreferences.hideTitleArtistWhenPaused)
+                .showTitle(v: UserPreferences.showTitle)
+                .showAlbumName(v: UserPreferences.showAlbumName)
+                .showArtist(v: UserPreferences.showArtist)
+                .showPlayingIcon(v: UserPreferences.showPlayingIcon)
+                .getString()
+            if self.lastStatusTitle != statusItemTitle {
+                self.updateTitle(newTitle: statusItemTitle)
+            }
         }
     }
 
