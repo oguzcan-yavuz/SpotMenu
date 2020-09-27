@@ -205,11 +205,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         task.resume();
     }
     
-    func getAudioFeatures(id: String?, completion: @escaping (AudioFeatures) -> (), retry: Int = 1) {
+    func getAudioFeatures(id: String?, completion: @escaping (AudioFeatures?) -> (), retry: Int = 1) {
         if id == nil {
-            let defaultAudioFeatures: AudioFeatures = AudioFeatures(key: 0, mode: 0, time_signature: 0, tempo: 0.0)
-
-            completion(defaultAudioFeatures)
+            completion(nil)
         } else {
             let trackId = id!.components(separatedBy: ":").last
             let url = URL(string: "https://api.spotify.com/v1/audio-features/\(trackId ?? "")")!
@@ -252,10 +250,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 artist: self.musicPlayerManager.currentPlayer?.currentTrack?.artist,
                 albumName: self.musicPlayerManager.currentPlayer?.currentTrack?.album,
                 isPlaying: self.musicPlayerManager.currentPlayer?.playbackState == MusicPlaybackState.playing,
-                key: audioFeatures.key,
-                tempo: audioFeatures.tempo,
-                timeSignature: audioFeatures.time_signature,
-                mode: audioFeatures.mode)
+                key: audioFeatures?.key,
+                tempo: audioFeatures?.tempo,
+                timeSignature: audioFeatures?.time_signature,
+                mode: audioFeatures?.mode)
                 .hideWhenPaused(v: false)
                 .showTitle(v: true)
                 .showAlbumName(v: true)
@@ -290,10 +288,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 artist: self.musicPlayerManager.currentPlayer?.currentTrack?.artist,
                 albumName: self.musicPlayerManager.currentPlayer?.currentTrack?.album,
                 isPlaying: self.musicPlayerManager.currentPlayer?.playbackState == MusicPlaybackState.playing,
-                key: audioFeatures.key,
-                tempo: audioFeatures.tempo,
-                timeSignature: audioFeatures.time_signature,
-                mode: audioFeatures.mode)
+                key: audioFeatures?.key,
+                tempo: audioFeatures?.tempo,
+                timeSignature: audioFeatures?.time_signature,
+                mode: audioFeatures?.mode)
                 .hideWhenPaused(v: UserPreferences.hideTitleArtistWhenPaused)
                 .showTitle(v: UserPreferences.showTitle)
                 .showAlbumName(v: UserPreferences.showAlbumName)

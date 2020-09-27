@@ -15,10 +15,10 @@ final class StatusItemBuilder {
     private var title = ""
     private var artist = ""
     private var albumName = ""
-    private var key = 0
+    private var key = ""
     private var tempo: Float = 0.0
     private var timeSignature = 0
-    private var mode = 0
+    private var mode = ""
     private var playingIcon = ""
     private var isPlaying: Bool = false
     private var hideWhenPaused = false
@@ -36,10 +36,23 @@ final class StatusItemBuilder {
             self.albumName = v
         }
         self.isPlaying = isPlaying
-        self.key = key ?? 0
+        
+        let pitchClass = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        if key != nil && key != -1 {
+            self.key = pitchClass[key!]
+        } else {
+            self.key = "?"
+        }
+
+        let modes = ["Min", "Maj"]
+        if mode != nil && mode != -1 {
+            self.mode = modes[mode!]
+        } else {
+            self.mode = "?"
+        }
+        
         self.tempo = tempo ?? 0
         self.timeSignature = timeSignature ?? 0
-        self.mode = mode ?? 0
     }
 
     // MARK: - Methods
@@ -97,13 +110,17 @@ final class StatusItemBuilder {
         }
         return self
     }
+    
+    func getAudioFeatures() -> String {
+        return "\(key)\(mode) \(tempo)/\(timeSignature)"
+    }
 
     func getString() -> String {
         if artist.count != 0 && title.count != 0 && albumName.count != 0 {
-            return "\(playingIcon)\(artist) - \(title) - \(albumName)"
+            return "\(playingIcon)\(getAudioFeatures()) \(artist) - \(title) - \(albumName)"
         } else if artist.count != 0 && title.count != 0 {
-            return "\(playingIcon)\(artist) - \(title)"
+            return "\(playingIcon)\(getAudioFeatures()) \(artist) - \(title)"
         }
-        return "\(playingIcon)\(artist)\(title)"
+        return "\(playingIcon)\(getAudioFeatures()) \(artist)\(title)"
     }
 }
